@@ -19,15 +19,15 @@ class DrupalFilterObject
     /**
      * This group/condition key is reserved and can not be used in a request.
      *
-     * The value is not specified by Drupals JSON:API filter documentation. However
-     * it is used by Drupals implementation and was thus adopted here and preferred over
+     * The value is not specified by Drupal's JSON:API filter documentation. However,
+     * it is used by Drupal's implementation and was thus adopted here and preferred over
      * alternatives like 'root' or '' (empty string).
      */
     public const ROOT_KEY = '@root';
     public const AND = 'AND';
     public const OR = 'OR';
     /**
-     * The key of the field determining which filter group a condition or a sub group is a member
+     * The key of the field determining which filter group a condition or a subgroup is a member
      * of.
      */
     private const MEMBER_OF_KEY = 'memberOf';
@@ -41,7 +41,7 @@ class DrupalFilterObject
      */
     private const CONDITION_KEY = 'condition';
     /**
-     * @var array<string,array<int,array<string,mixed>>>
+     * @var array<string,array<int,array{operator?: string, memberOf?: string, value?: mixed, path: string}>>
      */
     private $groupedConditions = [];
     /**
@@ -58,7 +58,7 @@ class DrupalFilterObject
      * group definitions and all conditions are on the first level, each having
      * a unique name.
      *
-     * @param array<string,array<string,array<string,mixed>>> $groupsAndConditions
+     * @param array<string,array{condition: array{operator?: string, memberOf?: string, value?: mixed, path: string}}|array{group: array{memberOf?: string, conjunction: string}}> $groupsAndConditions
      * @throws DrupalFilterException
      */
     public function __construct(array $groupsAndConditions)
@@ -70,7 +70,7 @@ class DrupalFilterObject
 
         foreach ($groupsAndConditions as $key => $groupOrCondition) {
             if (array_key_exists(self::GROUP_KEY, $groupOrCondition)) {
-                // If an item defines a group its structure will be simplified
+                // If an item defines a group its structure will be simplified,
                 // and it is added to the groups with its unique name as key.
                 $group = $this->getGroup($groupOrCondition);
                 $this->groupNameToConjunction[$key] = $group[self::CONJUNCTION];
@@ -94,7 +94,7 @@ class DrupalFilterObject
     }
 
     /**
-     * @return array<string,array<int,array<string,mixed>>>
+     * @return array<string,array<int,array{operator?: string, memberOf?: string, value?: mixed, path: string}>>
      */
     public function getGroupedConditions(): array
     {
@@ -120,7 +120,7 @@ class DrupalFilterObject
     /**
      * Get the unique name of the parent group of the given group or condition.
      *
-     * @param array<string,mixed> $groupOrCondition
+     * @param array{memberOf?: string} $groupOrCondition
      * @throws DrupalFilterException
      */
     protected function determineMemberOf(array $groupOrCondition): string

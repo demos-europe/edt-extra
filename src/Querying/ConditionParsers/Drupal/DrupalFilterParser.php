@@ -43,7 +43,7 @@ class DrupalFilterParser
     }
 
     /**
-     * @param array<string,array<string,array<string,mixed>>> $groupsAndConditions
+     * @param array<string,array{condition: array{operator?: string, memberOf?: string, value?: mixed, path: string}}|array{group: array{memberOf?: string, conjunction: string}}> $groupsAndConditions
      * @return FunctionInterface<bool>
      * @throws DrupalFilterException
      */
@@ -63,9 +63,9 @@ class DrupalFilterParser
         // We use the indices as information source and work on the $conditions
         // array only.
 
-        // The buckets may be stored in a flat list but logically we're working with a
+        // The buckets may be stored in a flat list, but logically we're working with a
         // tree of buckets. (Except if the request contained a group circle. Then
-        // it is not a tree anymore and we can't parse it.) To merge the buckets we need
+        // it is not a tree anymore, and we can't parse it.) To merge the buckets we need
         // to process that tree from the leaves up. To do so we search for buckets that
         // are not needed as parent group by any other bucket. These buckets are merged
         // into a single condition, which is then added to its parent bucket. This is
@@ -145,8 +145,8 @@ class DrupalFilterParser
     }
 
     /**
-     * @param array<string,array<int,array<string,mixed>>> $groupedConditions
-     * @return array<string,array<int,FunctionInterface<bool>>
+     * @param array<string,array<int,array{operator?: string, memberOf?: string, value?: mixed, path: string}>> $groupedConditions
+     * @return array<string,array<int,FunctionInterface<bool>>>
      */
     private function parseConditions(array $groupedConditions): array
     {

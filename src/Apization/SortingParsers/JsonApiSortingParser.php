@@ -21,7 +21,7 @@ class JsonApiSortingParser
 
     /**
      * Create an array of {@link SortMethodInterface} objects from the sort query parameter given if not null.
-     * Otherwise returns an empty array.
+     * Otherwise, returns an empty array.
      *
      * @return array<int,SortMethodInterface>
      */
@@ -62,6 +62,9 @@ class JsonApiSortingParser
         return 0 === strncmp($sortMethodRaw, '-', 1);
     }
 
+    /**
+     * @return array<int, string>
+     */
     private function toPathArray(string $pathString): array
     {
         return explode('.', $pathString);

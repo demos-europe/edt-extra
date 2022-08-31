@@ -11,10 +11,13 @@ use function array_key_exists;
 use function gettype;
 use function is_string;
 
+/**
+ * @template-implements ConditionParserInterface<array{operator?: string, memberOf?: string, value?: mixed, path: string}>
+ */
 abstract class DrupalConditionParser implements ConditionParserInterface
 {
     /**
-     * The key of the field determining which filter group a condition or a sub group is a member
+     * The key of the field determining which filter group a condition or a subgroup is a member
      * of.
      *
      * @var string
@@ -48,11 +51,10 @@ abstract class DrupalConditionParser implements ConditionParserInterface
     }
 
     /**
-     * @param array<string,mixed> $condition
      * @return FunctionInterface<bool>
      * @throws DrupalFilterException
      */
-    public function parseCondition(array $condition): FunctionInterface
+    public function parseCondition($condition): FunctionInterface
     {
         foreach ($condition as $key => $value) {
             switch ($key) {
