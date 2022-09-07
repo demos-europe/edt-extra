@@ -11,7 +11,6 @@ use EDT\Querying\ConditionParsers\Drupal\PredefinedConditionParser;
 use EDT\Querying\Contracts\ConditionFactoryInterface;
 use EDT\Querying\Contracts\PathException;
 use PHPUnit\Framework\TestCase;
-use TypeError;
 
 class DrupalConditionFactoryTest extends TestCase
 {
@@ -372,7 +371,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testGroupNoArray(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray(
             // passing an invalid paramater on purpose
             /** @phpstan-ignore-next-line */
@@ -387,7 +386,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testConditionNoArray(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
+
         $this->filterFactory->createRootFromArray(
             // passing an invalid paramater on purpose
             /** @phpstan-ignore-next-line */
@@ -439,7 +439,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidMemberOfType(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray([
             'condition_a' => [
                 'condition' => [
@@ -492,11 +492,22 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidConjunctionTypeInt(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray([
             'group_a' => [
                 'group' => [
                     'conjunction' => 1,
+                ],
+            ],
+        ]);
+    }
+
+    public function testInvalidNoConjunction(): void
+    {
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->createRootFromArray([
+            'group_a' => [
+                'group' => [
                 ],
             ],
         ]);
@@ -516,8 +527,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testNoPath(): void
     {
-        $this->expectError();
-        $this->expectErrorMessageMatches('/Undefined (array key|index:) "?path"?/');
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray([
             'condition_a' => [
                 'condition' => [
@@ -528,7 +538,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidPathType(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray([
             'condition_a' => [
                 'condition' => [
@@ -645,8 +655,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testConjunctionMissing(): void
     {
-        $this->expectError();
-        $this->expectErrorMessageMatches('/Undefined (array key|index:) "?conjunction"?/');
+        $this->expectException(DrupalFilterException::class);
 
         $this->filterFactory->createRootFromArray([
             'group_a' => [
@@ -658,7 +667,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidConjunctionTypeNull(): void
     {
-        $this->expectException(TypeError::class);
+        $this->expectException(DrupalFilterException::class);
         $this->filterFactory->createRootFromArray([
             'group_a' => [
                 'group' => [
