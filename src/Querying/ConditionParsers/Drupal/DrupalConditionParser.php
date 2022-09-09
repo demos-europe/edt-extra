@@ -8,42 +8,23 @@ use EDT\Querying\Contracts\ConditionFactoryInterface;
 use EDT\Querying\Contracts\ConditionParserInterface;
 use EDT\Querying\Contracts\FunctionInterface;
 use function array_key_exists;
-use function gettype;
-use function is_string;
 
 /**
+ * Parses specific conditions inside a Drupal filter format.
+ *
  * @psalm-type DrupalFilterCondition = array{
- *            path: string,
+ *            path: non-empty-string,
  *            value?: mixed,
- *            operator?: string,
- *            memberOf?: string
+ *            operator?: non-empty-string,
+ *            memberOf?: non-empty-string
  *          }
  * @template F of FunctionInterface<bool>
  * @template-implements ConditionParserInterface<DrupalFilterCondition, F>
  */
-abstract class DrupalConditionParser implements ConditionParserInterface
+class DrupalConditionParser implements ConditionParserInterface
 {
     /**
-     * The key of the field determining which filter group a condition or a subgroup is a member
-     * of.
-     *
-     * @var string
-     */
-    protected const MEMBER_OF = 'memberOf';
-    /**
-     * @var string
-     */
-    protected const VALUE = 'value';
-    /**
-     * @var string
-     */
-    protected const PATH = 'path';
-    /**
-     * @var string
-     */
-    protected const OPERATOR = 'operator';
-    /**
-     * @var string
+     * @var non-empty-string
      */
     protected $defaultOperator;
     /**
@@ -52,50 +33,51 @@ abstract class DrupalConditionParser implements ConditionParserInterface
     protected $conditionFactory;
 
     /**
-     * @param ConditionFactoryInterface<F> $conditionFactory
+     * @var OperatorProviderInterface<F>
      */
-    public function __construct(ConditionFactoryInterface $conditionFactory, string $defaultOperator = '=')
-    {
+    private $operatorProvider;
+
+    /**
+     * @param ConditionFactoryInterface<F> $conditionFactory
+     * @param OperatorProviderInterface<F> $operatorProvider
+     * @param non-empty-string             $defaultOperator
+     */
+    public function __construct(
+        ConditionFactoryInterface $conditionFactory,
+        OperatorProviderInterface $operatorProvider,
+        string $defaultOperator = '='
+    ) {
         $this->conditionFactory = $conditionFactory;
         $this->defaultOperator = $defaultOperator;
+        $this->operatorProvider = $operatorProvider;
     }
 
     /**
+     * @param  array{path: non-empty-string, value?: mixed, operator?: non-empty-string, memberOf?: non-empty-string} $condition
      * @throws DrupalFilterException
      */
     public function parseCondition($condition): FunctionInterface
     {
-        foreach ($condition as $key => $value) {
-            switch ($key) {
-                case self::PATH:
-                case self::VALUE:
-                case self::MEMBER_OF:
-                case self::OPERATOR:
-                    break;
-                default:
-                    throw DrupalFilterException::unknownConditionField($key);
-            }
-        }
-
-        $operatorString = array_key_exists(self::OPERATOR, $condition)
-            ? $condition[self::OPERATOR]
+        $operatorName = array_key_exists(DrupalFilterParser::OPERATOR, $condition)
+            ? $condition[DrupalFilterParser::OPERATOR]
             : $this->defaultOperator;
 
-        if (array_key_exists(self::VALUE, $condition) && null === $condition[self::VALUE]) {
+        if (array_key_exists(DrupalFilterParser::VALUE, $condition)
+            && null === $condition[DrupalFilterParser::VALUE]) {
             throw DrupalFilterException::nullValue();
         }
 
-        return $this->createCondition(
-            $operatorString,
-            $condition[self::VALUE] ?? null,
-            ...explode('.', $condition[self::PATH])
-        );
-    }
+        $value = $condition[DrupalFilterParser::VALUE] ?? null;
 
-    /**
-     * @param mixed|null $conditionValue
-     * @return F
-     * @throws DrupalFilterException
-     */
-    abstract protected function createCondition(string $conditionName, $conditionValue, string $pathPart, string ...$pathParts): FunctionInterface;
+        $pathString = $condition[DrupalFilterParser::PATH];
+        $path = array_map(static function (string $pathSegment) use ($operatorName, $pathString): string {
+            if ('' === $pathSegment) {
+                throw DrupalFilterException::emptyPathSegment($operatorName, $pathString);
+            }
+
+            return $pathSegment;
+        }, explode('.', $pathString));
+
+        return $this->operatorProvider->createOperator($operatorName, $value, $path);
+    }
 }

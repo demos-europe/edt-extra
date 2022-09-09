@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Querying\ConditionParsers;
 
 use EDT\Querying\ConditionFactories\PhpConditionFactory;
+use EDT\Querying\ConditionParsers\Drupal\DrupalConditionParser;
 use EDT\Querying\ConditionParsers\Drupal\DrupalFilterParser;
 use EDT\Querying\ConditionParsers\Drupal\DrupalFilterException;
-use EDT\Querying\ConditionParsers\Drupal\PredefinedConditionParser;
+use EDT\Querying\ConditionParsers\Drupal\DrupalFilterValidator;
+use EDT\Querying\ConditionParsers\Drupal\PredefinedOperatorProvider;
 use EDT\Querying\Contracts\ConditionFactoryInterface;
-use EDT\Querying\Contracts\PathException;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Validator\Validation;
 use TypeError;
 
 class DrupalConditionFactoryTest extends TestCase
@@ -28,13 +30,21 @@ class DrupalConditionFactoryTest extends TestCase
     {
         parent::setUp();
         $this->conditionFactory = new PhpConditionFactory();
-        $conditionParser = new PredefinedConditionParser($this->conditionFactory);
-        $this->filterFactory = new DrupalFilterParser($this->conditionFactory, $conditionParser);
+        $operatorProvider = new PredefinedOperatorProvider($this->conditionFactory);
+        $conditionParser = new DrupalConditionParser($this->conditionFactory, $operatorProvider);
+        $this->filterFactory = new DrupalFilterParser(
+            $this->conditionFactory,
+            $conditionParser,
+            new DrupalFilterValidator(
+                Validation::createValidator(),
+                $operatorProvider
+            )
+        );
     }
 
     public function testTwoExplicitEqualsOrExplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'operator' => '=',
@@ -63,12 +73,13 @@ class DrupalConditionFactoryTest extends TestCase
             $this->conditionFactory->propertyHasValue('DEF', 'id')
         );
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testTwoEqualsImplicitOneEqualsExplicitAndImplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'operator' => '=',
@@ -90,18 +101,21 @@ class DrupalConditionFactoryTest extends TestCase
             ],
         ]);
 
-        $expected = $this->conditionFactory->allConditionsApply(
+        $expected = [
             $this->conditionFactory->propertyHasValue('Stephen King', 'book', 'authorName'),
             $this->conditionFactory->propertyHasValue('Stephen King', 'book', 'editorName'),
-            $this->conditionFactory->propertyHasValue(123, 'id')
-        );
+            $this->conditionFactory->propertyHasValue(123, 'id'),
+        ];
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertSameSize($expected, $actual);
+        self::assertSame((string)$expected[0], (string)$actual[0]);
+        self::assertSame((string)$expected[1], (string)$actual[1]);
+        self::assertSame((string)$expected[2], (string)$actual[2]);
     }
 
     public function testTwoEqualsImplicitAndExplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'book.id',
@@ -116,17 +130,19 @@ class DrupalConditionFactoryTest extends TestCase
             ],
         ]);
 
-        $expected = $this->conditionFactory->allConditionsApply(
+        $expected = [
             $this->conditionFactory->propertyHasValue(234, 'book', 'id'),
-            $this->conditionFactory->propertyHasValue(567, 'id')
-        );
+            $this->conditionFactory->propertyHasValue(567, 'id'),
+        ];
 
-        self::assertSame((string) $expected, (string) $actual);
+        self::assertSameSize($expected, $actual);
+        self::assertSame((string)$expected[0], (string)$actual[0]);
+        self::assertSame((string)$expected[1], (string)$actual[1]);
     }
 
     public function testOneEqualsImplicitOneEqualsImplicitAndImplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'book.author.id',
@@ -141,17 +157,19 @@ class DrupalConditionFactoryTest extends TestCase
             ],
         ]);
 
-        $expected = $this->conditionFactory->allConditionsApply(
+        $expected = [
             $this->conditionFactory->propertyHasValue(987, 'book', 'author', 'id'),
-            $this->conditionFactory->propertyHasValue(654, 'id')
-        );
+            $this->conditionFactory->propertyHasValue(654, 'id'),
+        ];
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertSameSize($expected, $actual);
+        self::assertSame((string)$expected[0], (string)$actual[0]);
+        self::assertSame((string)$expected[1], (string)$actual[1]);
     }
 
     public function testOneEqualImplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'author.id',
@@ -161,12 +179,14 @@ class DrupalConditionFactoryTest extends TestCase
         ]);
 
         $expected = $this->conditionFactory->propertyHasValue(680, 'author', 'id');
-        self::assertSame((string)$expected, (string)$actual);
+
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testEqualsImplicitRecursivePath(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'author.books.author.books.author.books.author',
@@ -176,12 +196,14 @@ class DrupalConditionFactoryTest extends TestCase
         ]);
 
         $expected = $this->conditionFactory->propertyHasValue(123, 'author', 'books', 'author', 'books', 'author', 'books', 'author');
-        self::assertSame((string)$expected, (string)$actual);
+
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testOneBetweenOneEqualsImplicitAndImplicit(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'operator' => 'BETWEEN',
@@ -197,17 +219,19 @@ class DrupalConditionFactoryTest extends TestCase
             ],
         ]);
 
-        $expected = $this->conditionFactory->allConditionsApply(
+        $expected = [
             $this->conditionFactory->propertyBetweenValuesInclusive(-2, 7, 'author', 'booksWritten'),
-            $this->conditionFactory->propertyHasValue(531, 'id')
-        );
+            $this->conditionFactory->propertyHasValue(531, 'id'),
+        ];
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertSameSize($expected, $actual);
+        self::assertSame((string)$expected[0], (string)$actual[0]);
+        self::assertSame((string)$expected[1], (string)$actual[1]);
     }
 
     public function testNestedGroupLine(): void
     {
-        $actual = $this->filterFactory->createRootFromArray(
+        $actual = $this->filterFactory->parseFilter(
             [
                 'condition' => [
                     'condition' => [
@@ -244,12 +268,13 @@ class DrupalConditionFactoryTest extends TestCase
 
         $expected = $this->conditionFactory->propertyHasValue('Stephen King', 'book', 'author', 'name');
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testNestedGroups(): void
     {
-        $actual = $this->filterFactory->createRootFromArray(
+        $actual = $this->filterFactory->parseFilter(
             [
                 'condition_a' => [
                     'condition' => [
@@ -302,12 +327,13 @@ class DrupalConditionFactoryTest extends TestCase
             )
         );
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testNotEquals(): void
     {
-        $actual = $this->filterFactory->createRootFromArray(
+        $actual = $this->filterFactory->parseFilter(
             [
                 'condition_a' => [
                     'condition' => [
@@ -321,12 +347,13 @@ class DrupalConditionFactoryTest extends TestCase
 
         $expected = $this->conditionFactory->propertyHasNotValue(123, 'id');
 
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testSkippedCondition(): void
     {
-        $actual = $this->filterFactory->createRootFromArray(
+        $actual = $this->filterFactory->parseFilter(
             [
                 'condition_a' => [
                     'condition' => [
@@ -339,15 +366,13 @@ class DrupalConditionFactoryTest extends TestCase
             ]
         );
 
-        $expected = $this->conditionFactory->true();
-
-        self::assertSame((string)$expected, (string)$actual);
+        self::assertSame([], $actual);
     }
 
     public function testNeitherConditionNorGroup(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'non_condition' => [
                 'invalid' => [
                     'path' => 'id',
@@ -360,7 +385,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testRootKeyUsed(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             '@root' => [
                 'condition' => [
                     'path' => 'id',
@@ -372,8 +397,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testGroupNoArray(): void
     {
-        $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray(
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter(
             // passing an invalid paramater on purpose
             /** @phpstan-ignore-next-line */
             [
@@ -387,8 +412,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testConditionNoArray(): void
     {
-        $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray(
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter(
             // passing an invalid paramater on purpose
             /** @phpstan-ignore-next-line */
             [
@@ -401,15 +426,14 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testNoCondition(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([]);
-        $expected = $this->conditionFactory->true();
-        self::assertSame((string)$expected, (string)$actual);
+        $actual = $this->filterFactory->parseFilter([]);
+        self::assertSame([], $actual);
     }
 
     public function testUnknownGroupFieldWithoutConditions(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'invalid' => '',
@@ -421,7 +445,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testUnknownGroupField(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'id',
@@ -439,8 +463,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidMemberOfType(): void
     {
-        $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'id',
@@ -454,7 +478,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidMemberOfRoot(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'id',
@@ -469,7 +493,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidOrConjunction(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'conjunction' => 'or',
@@ -481,7 +505,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidAndConjunction(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'conjunction' => 'and',
@@ -492,8 +516,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidConjunctionTypeInt(): void
     {
-        $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'conjunction' => 1,
@@ -505,7 +529,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidConditionKey(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'invalid' => '',
@@ -516,9 +540,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testNoPath(): void
     {
-        $this->expectError();
-        $this->expectErrorMessageMatches('/Undefined (array key|index:) "?path"?/');
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                 ],
@@ -528,8 +551,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testInvalidPathType(): void
     {
-        $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 2
@@ -541,7 +564,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testNullValue(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'a',
@@ -553,8 +576,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testEmptyPath(): void
     {
-        $this->expectException(PathException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => '',
@@ -566,7 +589,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testUnknownOperator(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'condition_a' => [
                 'condition' => [
                     'path' => 'a.b',
@@ -578,7 +601,7 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testSingleOrCondition(): void
     {
-        $actual = $this->filterFactory->createRootFromArray([
+        $actual = $this->filterFactory->parseFilter([
             'myCondition' => [
                 'condition' => [
                     'path' => 'some.path',
@@ -595,13 +618,14 @@ class DrupalConditionFactoryTest extends TestCase
 
         $expected = $this->conditionFactory->propertyHasValue('someValue', 'some', 'path');
 
-        self::assertEquals($expected, $actual);
+        self::assertCount(1, $actual);
+        self::assertSame((string)$expected, (string)$actual[0]);
     }
 
     public function testLoop(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'myCondition' => [
                 'condition' => [
                     'path' => 'some.path',
@@ -633,7 +657,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidGroupField(): void
     {
         $this->expectException(DrupalFilterException::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'foobar' => 'OR',
@@ -645,10 +669,8 @@ class DrupalConditionFactoryTest extends TestCase
 
     public function testConjunctionMissing(): void
     {
-        $this->expectError();
-        $this->expectErrorMessageMatches('/Undefined (array key|index:) "?conjunction"?/');
-
-        $this->filterFactory->createRootFromArray([
+        $this->expectException(DrupalFilterException::class);
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [],
             ],
@@ -659,7 +681,7 @@ class DrupalConditionFactoryTest extends TestCase
     public function testInvalidConjunctionTypeNull(): void
     {
         $this->expectException(TypeError::class);
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'conjunction' => null,
@@ -673,7 +695,7 @@ class DrupalConditionFactoryTest extends TestCase
     {
         $this->expectException(DrupalFilterException::class);
 
-        $this->filterFactory->createRootFromArray([
+        $this->filterFactory->parseFilter([
             'group_a' => [
                 'group' => [
                     'conjunction' => 'FOO',

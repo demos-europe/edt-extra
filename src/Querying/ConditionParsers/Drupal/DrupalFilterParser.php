@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace EDT\Querying\ConditionParsers\Drupal;
 
+use EDT\JsonApi\RequestHandling\FilterParserInterface;
 use EDT\Querying\Contracts\ConditionFactoryInterface;
 use EDT\Querying\Contracts\ConditionParserInterface;
 use EDT\Querying\Contracts\FunctionInterface;
-use function array_key_exists;
 use function count;
 use function in_array;
 
@@ -17,18 +17,19 @@ use function in_array;
  * The data is expected to be in the format defined by the Drupal JSON:API filter specification.
  *
  * @psalm-type DrupalFilterGroup = array{
- *            conjunction: DrupalFilterObject::AND|DrupalFilterObject::OR,
- *            memberOf?: string
+ *            conjunction: non-empty-string,
+ *            memberOf?: non-empty-string
  *          }
  * @psalm-type DrupalFilterCondition = array{
- *            path: string,
+ *            path: non-empty-string,
  *            value?: mixed,
- *            operator?: string,
- *            memberOf?: string
+ *            operator?: non-empty-string,
+ *            memberOf?: non-empty-string
  *          }
  * @template F of FunctionInterface<bool>
+ * @template-implements FilterParserInterface<array<non-empty-string,array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}>, F>
  */
-class DrupalFilterParser
+class DrupalFilterParser implements FilterParserInterface
 {
     /**
      * The maximum number of steps we make inside the tree to be built from the given condition groups.
@@ -39,41 +40,114 @@ class DrupalFilterParser
      * keep DoS attacks in mind when doing so.
      */
     private const MAX_ITERATIONS = 5000;
+
+    /**
+     * The key identifying a field as data for a filter group.
+     */
+    public const GROUP = 'group';
+
+    /**
+     * Any condition in the group must apply.
+     */
+    public const OR = 'OR';
+
+    /**
+     * This group/condition key is reserved and can not be used in a request.
+     *
+     * The value is not specified by Drupal's JSON:API filter documentation. However,
+     * it is used by Drupal's implementation and was thus adopted here and preferred over
+     * alternatives like 'root' or '' (empty string).
+     */
+    public const ROOT = '@root';
+
+    /**
+     * The key of the field determining which filter group a condition or a subgroup is a member
+     * of.
+     */
+    public const MEMBER_OF = 'memberOf';
+
+    /**
+     * All conditions in the group must apply.
+     */
+    public const AND = 'AND';
+
+    /**
+     * The key identifying a field as data for a filter condition.
+     */
+    public const CONDITION = 'condition';
+
+    /**
+     * The key for the field in which "AND" or "OR" is stored.
+     */
+    public const CONJUNCTION = 'conjunction';
+
+    /**
+     * @var string
+     */
+    public const PATH = 'path';
+
+    /**
+     * @var string
+     */
+    public const OPERATOR = 'operator';
+
+    /**
+     * @var string
+     */
+    public const VALUE = 'value';
+
     /**
      * @var ConditionFactoryInterface<F>
      */
     protected $conditionFactory;
+
     /**
      * @var ConditionParserInterface<DrupalFilterCondition, F>
      */
     private $conditionParser;
 
     /**
-     * @param ConditionFactoryInterface<F>                $conditionFactory
+     * @var DrupalFilterValidator
+     */
+    private $filterValidator;
+
+    /**
+     * @param ConditionFactoryInterface<F>                       $conditionFactory
      * @param ConditionParserInterface<DrupalFilterCondition, F> $conditionParser
      */
-    public function __construct(ConditionFactoryInterface $conditionFactory, ConditionParserInterface $conditionParser)
-    {
+    public function __construct(
+        ConditionFactoryInterface $conditionFactory,
+        ConditionParserInterface $conditionParser,
+        DrupalFilterValidator $filterValidator
+    ) {
         $this->conditionFactory = $conditionFactory;
         $this->conditionParser = $conditionParser;
+        $this->filterValidator = $filterValidator;
     }
 
     /**
-     * @param array<string,array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}> $groupsAndConditions
-     * @return F
+     * The returned conditions are to be applied in an `AND` manner, i.e. all conditions must
+     * match for an entity to match the Drupal filter. An empty error being returned means that
+     * all entities match, as there are no restrictions.
+     *
+     * @param array<non-empty-string,array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}> $groupsAndConditions
+     *
+     * @return array<int, F>
+     *
      * @throws DrupalFilterException
      */
-    public function createRootFromArray(array $groupsAndConditions): FunctionInterface
+    public function parseFilter($groupsAndConditions): array
     {
-        $filter = new DrupalFilterObject($groupsAndConditions);
-        $conditions = $this->parseConditions($filter->getGroupedConditions());
+        $this->filterValidator->validateFilter($groupsAndConditions);
+        $filter = new DrupalFilter($groupsAndConditions);
+        $groupedConditions = $filter->getGroupedConditions();
+        $conditions = $this->parseConditions($groupedConditions);
 
         // If no buckets with conditions exist we can return right away
         if (0 === count($conditions)) {
-            return $this->conditionFactory->true();
+            return [];
         }
 
-        $groupNameToConjunction = $filter->getGroupNameToConjunction();
         $groupNameToMemberOf = $filter->getGroupNameToMemberOf();
 
         // We use the indices as information source and work on the $conditions
@@ -87,18 +161,18 @@ class DrupalFilterParser
         // into a single condition, which is then added to its parent bucket. This is
         // repeated until only the root bucket remains.
         $emergencyCounter = self::MAX_ITERATIONS;
-        while (0 !== count($conditions) && !$this->reachedRootGroup($conditions)) {
+        while (0 !== count($conditions) && !$this->hasReachedRootGroup($conditions)) {
             if (0 > --$emergencyCounter) {
                 throw DrupalFilterException::emergencyAbort(self::MAX_ITERATIONS);
             }
             foreach ($conditions as $bucketName => $bucket) {
-                if (DrupalFilterObject::ROOT === $bucketName) {
+                if (self::ROOT === $bucketName) {
                     continue;
                 }
 
                 // If no conjunction definition for this group name exists we can remove it,
                 // as the specification says to ignore such groups.
-                if (!array_key_exists($bucketName, $groupNameToConjunction)) {
+                if (!$filter->hasGroup($bucketName)) {
                     unset($conditions[$bucketName]);
                     continue;
                 }
@@ -109,8 +183,8 @@ class DrupalFilterParser
                 // mark it as no longer needed as by a parent.
                 $usedAsParentGroup = in_array($bucketName, $groupNameToMemberOf, true);
                 if (!$usedAsParentGroup) {
-                    $conjunction = $groupNameToConjunction[$bucketName];
-                    $parentGroupKey = $groupNameToMemberOf[$bucketName] ?? DrupalFilterObject::ROOT;
+                    $conjunction = $filter->getGroupConjunction($bucketName);
+                    $parentGroupKey = $filter->getFilterGroupParent($bucketName);
                     $conditionsToMerge = $conditions[$bucketName];
                     $additionalCondition = 1 === count($conditionsToMerge)
                         ? array_pop($conditionsToMerge)
@@ -121,17 +195,7 @@ class DrupalFilterParser
             }
         }
 
-        // After having merged and added all buckets to the root bucket we
-        // can merge it too and return the resulting root condition.
-        $rootConditions = $conditions[DrupalFilterObject::ROOT] ?? [];
-        switch (count($rootConditions)) {
-            case 0:
-                return $this->conditionFactory->true();
-            case 1:
-                return array_pop($rootConditions);
-            default:
-                return $this->conditionFactory->allConditionsApply(...$rootConditions);
-        }
+        return $conditions[self::ROOT] ?? [];
     }
 
     /**
@@ -143,9 +207,9 @@ class DrupalFilterParser
     protected function createGroup(string $conjunction, FunctionInterface $condition, FunctionInterface ...$conditions): FunctionInterface
     {
         switch ($conjunction) {
-            case DrupalFilterObject::AND:
+            case self::AND:
                 return $this->conditionFactory->allConditionsApply($condition, ...$conditions);
-            case DrupalFilterObject::OR:
+            case self::OR:
                 return $this->conditionFactory->anyConditionApplies($condition, ...$conditions);
             default:
                 throw DrupalFilterException::conjunctionUnavailable($conjunction);
@@ -153,17 +217,16 @@ class DrupalFilterParser
     }
 
     /**
-     * @param array<string,array<int,FunctionInterface<bool>|null>> $conditions
-     * @return bool
+     * @param array<string,array<int,F|null>> $conditions
      */
-    private function reachedRootGroup(array $conditions): bool
+    private function hasReachedRootGroup(array $conditions): bool
     {
-        return 1 === count($conditions) && DrupalFilterObject::ROOT === array_key_first($conditions);
+        return 1 === count($conditions) && self::ROOT === array_key_first($conditions);
     }
 
     /**
-     * @param array<string,array<int,DrupalFilterCondition>> $groupedConditions
-     * @return array<string,array<int,F>>
+     * @param array<non-empty-string, array<int,DrupalFilterCondition>> $groupedConditions
+     * @return array<non-empty-string, array<int, F>>
      */
     private function parseConditions(array $groupedConditions): array
     {
