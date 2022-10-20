@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace EDT\Querying\ConditionParsers\Drupal;
 
+use EDT\ConditionFactory\PathsBasedConditionGroupFactoryInterface;
 use EDT\JsonApi\RequestHandling\FilterParserInterface;
-use EDT\Querying\Contracts\ConditionFactoryInterface;
 use EDT\Querying\Contracts\ConditionParserInterface;
 use EDT\Querying\Contracts\PathsBasedInterface;
 use function count;
@@ -97,9 +97,9 @@ class DrupalFilterParser implements FilterParserInterface
     public const VALUE = 'value';
 
     /**
-     * @var ConditionFactoryInterface<TCondition>
+     * @var PathsBasedConditionGroupFactoryInterface<TCondition>
      */
-    protected $conditionFactory;
+    protected $conditionGroupFactory;
 
     /**
      * @var ConditionParserInterface<DrupalFilterCondition, TCondition>
@@ -112,15 +112,15 @@ class DrupalFilterParser implements FilterParserInterface
     private $filterValidator;
 
     /**
-     * @param ConditionFactoryInterface<TCondition>                       $conditionFactory
+     * @param PathsBasedConditionGroupFactoryInterface<TCondition>        $conditionGroupFactory
      * @param ConditionParserInterface<DrupalFilterCondition, TCondition> $conditionParser
      */
     public function __construct(
-        ConditionFactoryInterface $conditionFactory,
+        PathsBasedConditionGroupFactoryInterface $conditionGroupFactory,
         ConditionParserInterface $conditionParser,
         DrupalFilterValidator $filterValidator
     ) {
-        $this->conditionFactory = $conditionFactory;
+        $this->conditionGroupFactory = $conditionGroupFactory;
         $this->conditionParser = $conditionParser;
         $this->filterValidator = $filterValidator;
     }
@@ -209,9 +209,9 @@ class DrupalFilterParser implements FilterParserInterface
     {
         switch ($conjunction) {
             case self::AND:
-                return $this->conditionFactory->allConditionsApply($condition, ...$conditions);
+                return $this->conditionGroupFactory->allConditionsApply($condition, ...$conditions);
             case self::OR:
-                return $this->conditionFactory->anyConditionApplies($condition, ...$conditions);
+                return $this->conditionGroupFactory->anyConditionApplies($condition, ...$conditions);
             default:
                 throw DrupalFilterException::conjunctionUnavailable($conjunction);
         }
