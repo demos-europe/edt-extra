@@ -17,14 +17,9 @@ use TypeError;
 
 class DrupalConditionFactoryTest extends TestCase
 {
-    /**
-     * @var PathsBasedConditionFactoryInterface
-     */
-    private $conditionFactory;
-    /**
-     * @var DrupalFilterParser
-     */
-    private $filterFactory;
+    private PathsBasedConditionFactoryInterface $conditionFactory;
+
+    private DrupalFilterParser $filterFactory;
 
     protected function setUp(): void
     {
@@ -742,9 +737,7 @@ class DrupalConditionFactoryTest extends TestCase
      */
     public function getValidFilterNames(): array
     {
-        return array_map(static function (string $name): array {
-            return [$name];
-        }, [
+        return array_map(static fn (string $name): array => [$name], [
             'x',
             'condition',
             'group',
@@ -765,9 +758,7 @@ class DrupalConditionFactoryTest extends TestCase
      */
     public function getInvalidFilterNames(): array
     {
-        return array_map(static function (string $name): array {
-            return [$name];
-        }, [
+        return array_map(static fn (string $name): array => [$name], [
             '',
             DrupalFilterParser::ROOT,
             '@ROOT',

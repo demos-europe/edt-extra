@@ -27,7 +27,7 @@ use function in_array;
  *            memberOf?: non-empty-string
  *          }
  * @template TCondition of \EDT\Querying\Contracts\PathsBasedInterface
- * @template-implements FilterParserInterface<array<non-empty-string,array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}>, TCondition>
+ * @template-implements FilterParserInterface<array<non-empty-string, array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}>, TCondition>
  */
 class DrupalFilterParser implements FilterParserInterface
 {
@@ -99,17 +99,14 @@ class DrupalFilterParser implements FilterParserInterface
     /**
      * @var PathsBasedConditionGroupFactoryInterface<TCondition>
      */
-    protected $conditionGroupFactory;
+    protected PathsBasedConditionGroupFactoryInterface $conditionGroupFactory;
 
     /**
      * @var ConditionParserInterface<DrupalFilterCondition, TCondition>
      */
-    private $conditionParser;
+    private ConditionParserInterface $conditionParser;
 
-    /**
-     * @var DrupalFilterValidator
-     */
-    private $filterValidator;
+    private DrupalFilterValidator $filterValidator;
 
     /**
      * @param PathsBasedConditionGroupFactoryInterface<TCondition>        $conditionGroupFactory
@@ -130,7 +127,7 @@ class DrupalFilterParser implements FilterParserInterface
      * match for an entity to match the Drupal filter. An empty error being returned means that
      * all entities match, as there are no restrictions.
      *
-     * @param array<non-empty-string,array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}> $filter
+     * @param array<non-empty-string, array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}> $filter
      *
      * @return list<TCondition>
      *
@@ -232,10 +229,12 @@ class DrupalFilterParser implements FilterParserInterface
      */
     protected function parseConditions(array $groupedConditions): array
     {
-        return array_map(function (array $conditionGroup): array {
-            return array_map(function (array $condition): PathsBasedInterface {
-                return $this->conditionParser->parseCondition($condition);
-            }, $conditionGroup);
-        }, $groupedConditions);
+        return array_map(
+            fn (array $conditionGroup): array => array_map(
+                [$this->conditionParser, 'parseCondition'],
+                $conditionGroup
+            ),
+            $groupedConditions
+        );
     }
 }
