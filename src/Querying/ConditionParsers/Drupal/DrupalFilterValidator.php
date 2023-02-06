@@ -22,13 +22,12 @@ class DrupalFilterValidator
      */
     protected array $filterNamesConstraints;
 
-    protected ValidatorInterface $validator;
-
-    public function __construct(ValidatorInterface $validator, DrupalConditionFactoryInterface $drupalConditionFactory)
-    {
+    public function __construct(
+        protected ValidatorInterface $validator,
+        DrupalConditionFactoryInterface $drupalConditionFactory
+    ) {
         $this->filterNamesConstraints = $this->getFilterNamesConstraints();
         $this->filterSchemaConstraints = $this->getFilterSchemaConstraints($drupalConditionFactory->getSupportedOperators());
-        $this->validator = $validator;
     }
 
     /**
@@ -37,7 +36,7 @@ class DrupalFilterValidator
      *
      * @throws DrupalFilterException
      */
-    public function validateFilter($filter): void
+    public function validateFilter(mixed $filter): void
     {
         $filterSchemaViolations = $this->validator->validate($filter, $this->filterSchemaConstraints);
         $filterNameViolations = $this->validator->validate(array_keys($filter), $this->filterNamesConstraints);

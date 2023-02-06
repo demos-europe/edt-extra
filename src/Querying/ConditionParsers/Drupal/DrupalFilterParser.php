@@ -16,7 +16,7 @@ use function in_array;
  *
  * The data is expected to be in the format defined by the Drupal JSON:API filter specification.
  *
- * @phpstan-type DrupalValue = string|float|int|bool|array<int|string, mixed>|null
+ * @phpstan-type DrupalValue = simple_primitive|array<int|string, mixed>|null
  * @phpstan-type DrupalFilterGroup = array{
  *            conjunction: 'AND'|'OR',
  *            memberOf?: non-empty-string
@@ -27,7 +27,7 @@ use function in_array;
  *            operator?: non-empty-string,
  *            memberOf?: non-empty-string
  *          }
- * @template TCondition of \EDT\Querying\Contracts\PathsBasedInterface
+ * @template TCondition of PathsBasedInterface
  * @template-implements FilterParserInterface<array<non-empty-string, array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}>, TCondition>
  */
 class DrupalFilterParser implements FilterParserInterface
@@ -98,30 +98,13 @@ class DrupalFilterParser implements FilterParserInterface
     public const VALUE = 'value';
 
     /**
-     * @var PathsBasedConditionGroupFactoryInterface<TCondition>
-     */
-    protected PathsBasedConditionGroupFactoryInterface $conditionGroupFactory;
-
-    /**
-     * @var ConditionParserInterface<DrupalFilterCondition, TCondition>
-     */
-    private ConditionParserInterface $conditionParser;
-
-    private DrupalFilterValidator $filterValidator;
-
-    /**
-     * @param PathsBasedConditionGroupFactoryInterface<TCondition>        $conditionGroupFactory
      * @param ConditionParserInterface<DrupalFilterCondition, TCondition> $conditionParser
      */
     public function __construct(
-        PathsBasedConditionGroupFactoryInterface $conditionGroupFactory,
-        ConditionParserInterface $conditionParser,
-        DrupalFilterValidator $filterValidator
-    ) {
-        $this->conditionGroupFactory = $conditionGroupFactory;
-        $this->conditionParser = $conditionParser;
-        $this->filterValidator = $filterValidator;
-    }
+        protected readonly PathsBasedConditionGroupFactoryInterface $conditionGroupFactory,
+        private readonly ConditionParserInterface $conditionParser,
+        private readonly DrupalFilterValidator $filterValidator
+    ) {}
 
     /**
      * The returned conditions are to be applied in an `AND` manner, i.e. all conditions must
@@ -205,14 +188,11 @@ class DrupalFilterParser implements FilterParserInterface
      */
     protected function createGroup(string $conjunction, array $conditions): PathsBasedInterface
     {
-        switch ($conjunction) {
-            case self::AND:
-                return $this->conditionGroupFactory->allConditionsApply(...$conditions);
-            case self::OR:
-                return $this->conditionGroupFactory->anyConditionApplies(...$conditions);
-            default:
-                throw DrupalFilterException::conjunctionUnavailable($conjunction);
-        }
+        return match ($conjunction) {
+            self::AND => $this->conditionGroupFactory->allConditionsApply(...$conditions),
+            self::OR => $this->conditionGroupFactory->anyConditionApplies(...$conditions),
+            default => throw DrupalFilterException::conjunctionUnavailable($conjunction),
+        };
     }
 
     /**

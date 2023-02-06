@@ -13,32 +13,19 @@ use function array_key_exists;
  *
  * @phpstan-import-type DrupalFilterCondition from DrupalFilterParser
  *
- * @template TCondition of \EDT\Querying\Contracts\PathsBasedInterface
+ * @template TCondition of PathsBasedInterface
  * @template-implements ConditionParserInterface<DrupalFilterCondition, TCondition>
  */
 class DrupalConditionParser implements ConditionParserInterface
 {
     /**
-     * @var non-empty-string
-     */
-    protected string $defaultOperator;
-
-    /**
-     * @var DrupalConditionFactoryInterface<TCondition>
-     */
-    private DrupalConditionFactoryInterface $drupalConditionFactory;
-
-    /**
      * @param DrupalConditionFactoryInterface<TCondition> $drupalConditionFactory
-     * @param non-empty-string                            $defaultOperator
+     * @param non-empty-string $defaultOperator
      */
     public function __construct(
-        DrupalConditionFactoryInterface $drupalConditionFactory,
-        string $defaultOperator = '='
-    ) {
-        $this->defaultOperator = $defaultOperator;
-        $this->drupalConditionFactory = $drupalConditionFactory;
-    }
+        private readonly DrupalConditionFactoryInterface $drupalConditionFactory,
+        protected readonly string $defaultOperator = '='
+    ) {}
 
     /**
      * @throws DrupalFilterException

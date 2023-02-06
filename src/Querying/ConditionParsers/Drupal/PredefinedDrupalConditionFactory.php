@@ -9,18 +9,13 @@ use EDT\Querying\Contracts\PathsBasedInterface;
 use function array_key_exists;
 
 /**
- * @template TCondition of \EDT\Querying\Contracts\PathsBasedInterface
+ * @template TCondition of PathsBasedInterface
  * @template-implements DrupalConditionFactoryInterface<TCondition>
  *
  * @phpstan-import-type DrupalValue from DrupalConditionFactoryInterface
  */
 class PredefinedDrupalConditionFactory implements DrupalConditionFactoryInterface
 {
-    /**
-     * @var PathsBasedConditionFactoryInterface<TCondition>
-     */
-    private PathsBasedConditionFactoryInterface $conditionFactory;
-
     /**
      * @var array<non-empty-string, callable(DrupalValue, non-empty-list<non-empty-string>):TCondition>
      */
@@ -29,9 +24,9 @@ class PredefinedDrupalConditionFactory implements DrupalConditionFactoryInterfac
     /**
      * @param PathsBasedConditionFactoryInterface<TCondition> $conditionFactory
      */
-    public function __construct(PathsBasedConditionFactoryInterface $conditionFactory)
-    {
-        $this->conditionFactory = $conditionFactory;
+    public function __construct(
+        private readonly PathsBasedConditionFactoryInterface $conditionFactory
+    ) {
         $this->operatorFunctions = $this->getOperatorFunctions();
     }
 
@@ -40,7 +35,7 @@ class PredefinedDrupalConditionFactory implements DrupalConditionFactoryInterfac
         return array_keys($this->operatorFunctions);
     }
 
-    public function createCondition(string $operatorName, $value, array $path): PathsBasedInterface
+    public function createCondition(string $operatorName, array|string|int|float|bool|null $value, array $path): PathsBasedInterface
     {
         if (!array_key_exists($operatorName, $this->operatorFunctions)) {
             throw DrupalFilterException::unknownCondition($operatorName, ...$this->getSupportedOperators());
