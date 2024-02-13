@@ -11,6 +11,10 @@ use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
+/**
+ * @phpstan-import-type DrupalFilterGroup from DrupalFilterParser
+ * @phpstan-import-type DrupalFilterCondition from DrupalFilterParser
+ */
 class DrupalFilterValidator
 {
     /**
@@ -31,7 +35,9 @@ class DrupalFilterValidator
     ) {
         $this->collectionConstraintFactory = new CollectionConstraintFactory();
         $this->filterNamesConstraints = $this->getFilterNamesConstraints();
-        $this->filterSchemaConstraints = $this->getFilterSchemaConstraints($drupalConditionFactory->getSupportedOperators());
+
+        $supportedOperators = $drupalConditionFactory->getSupportedOperators();
+        $this->filterSchemaConstraints = $this->getFilterSchemaConstraints($supportedOperators);
     }
 
     /**
@@ -39,6 +45,8 @@ class DrupalFilterValidator
      *                      validation any kind of value is allowed here
      *
      * @throws DrupalFilterException
+     *
+     * @phpstan-assert array<non-empty-string, array{condition: DrupalFilterCondition}|array{group: DrupalFilterGroup}> $filter
      */
     public function validateFilter(mixed $filter): void
     {
@@ -56,17 +64,19 @@ class DrupalFilterValidator
     }
 
     /**
-     * @param list<non-empty-string> $validOperatorNames
+     * @param array<non-empty-string, list<Constraint>> $validOperators
      *
      * @return list<Constraint>
      */
-    protected function getFilterSchemaConstraints(array $validOperatorNames): array
+    protected function getFilterSchemaConstraints(array $validOperators): array
     {
+        $filterTypeConstraints = $this->getFilterTypeConstraints($validOperators);
+
         /** @var mixed $assertionsOnRootItems (avoid incorrect type concern) */
         $assertionsOnRootItems = [
             new Assert\Type('array'),
             new Assert\Count(1),
-            $this->collectionConstraintFactory->noExtra('filter items', $this->getFilterTypeConstraints($validOperatorNames)),
+            $this->collectionConstraintFactory->noExtra('filter items', $filterTypeConstraints),
         ];
 
         return [
@@ -76,25 +86,27 @@ class DrupalFilterValidator
     }
 
     /**
-     * @param list<non-empty-string> $validOperatorNames
+     * @param array<non-empty-string, list<Constraint>> $validOperators
      *
      * @return array{condition: list<Constraint>, group: list<Constraint>}
      */
-    protected function getFilterTypeConstraints(array $validOperatorNames): array
+    protected function getFilterTypeConstraints(array $validOperators): array
     {
         return [
-            DrupalFilterParser::CONDITION => $this->getConditionConstraints($validOperatorNames),
+            DrupalFilterParser::CONDITION => $this->getConditionConstraints($validOperators),
             DrupalFilterParser::GROUP     => $this->getGroupConstraints(),
         ];
     }
 
     /**
-     * @param list<non-empty-string> $validOperatorNames
+     * @param array<non-empty-string, list<Constraint>> $validOperators
      *
      * @return list<Constraint>
      */
-    protected function getConditionConstraints(array $validOperatorNames): array
+    protected function getConditionConstraints(array $validOperators): array
     {
+        // FIXME: use constraints provided for each operator to validate drupal conditions
+        $validOperatorNames = array_keys($validOperators);
         $filterNameConstraints = $this->getFilterNameConstraints();
         $pathConstraints = [
             new Assert\Type('string'),
